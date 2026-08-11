@@ -1,0 +1,148 @@
+{
+  "model": "model-public-domain",
+  "license": "MIT",
+  "training_data": "pdmx only (public domain / cc0)",
+  "architecture": "CRNN + CTC",
+  "parameters": 3205838,
+  "vocabulary_size": 141,
+  "vocabulary_file": "vocab.json",
+  "source_epoch": 36,
+  "opset": 17,
+  "graph_ops": [
+    "Add",
+    "Concat",
+    "Constant",
+    "ConstantOfShape",
+    "Conv",
+    "Gather",
+    "LSTM",
+    "MatMul",
+    "MaxPool",
+    "Mul",
+    "Relu",
+    "Reshape",
+    "Shape",
+    "Slice",
+    "Transpose",
+    "Unsqueeze"
+  ],
+  "exported_with": {
+    "torch": "2.13.0+cpu",
+    "onnxruntime": "1.28.0"
+  },
+  "input": {
+    "name": "input",
+    "dtype": "float32",
+    "shape": [
+      1,
+      1,
+      128,
+      "width"
+    ],
+    "dynamic_axes": {
+      "0": "batch",
+      "3": "width"
+    },
+    "value_range": "[0, 1], INVERTED: ink ~= 1, paper = 0. Un-inverted input produces garbage that looks like an export bug.",
+    "height": 128
+  },
+  "output": {
+    "name": "logits",
+    "dtype": "float32 (all variants; fp16 keeps float32 IO)",
+    "shape": [
+      1,
+      "floor(width/4)",
+      142
+    ],
+    "semantics": "per-frame class logits; class 0 = CTC blank, class i>0 = vocabulary token i-1",
+    "decoding": "CTC greedy best-path: argmax per frame, collapse repeats, drop blanks",
+    "width_reduction": 4
+  },
+  "parity_pytorch_vs_onnxruntime": {
+    "criterion": "identical greedy token sequences per line",
+    "lines_compared": 22187,
+    "lines_mismatching": 0,
+    "mismatches": []
+  },
+  "files": {
+    "fp32": {
+      "file": "omr-line.fp32.onnx",
+      "megabytes": 12.83,
+      "sha256": "fc4c1e3af94076c1bab621cca0e88f0b8357ac88a36d2831025864e518a54850",
+      "measured": {
+        "synthetic_testsplit": {
+          "lines": 22187,
+          "ser_mean": 0.00538,
+          "exact_percent": 88.1
+        },
+        "reserve28_musescore": {
+          "lines": 2108,
+          "ser_mean": 0.03057,
+          "exact_percent": 63.5
+        },
+        "reserve28_verovio": {
+          "lines": 1968,
+          "ser_mean": 0.01834,
+          "exact_percent": 67.8
+        }
+      }
+    },
+    "fp16": {
+      "file": "omr-line.fp16.onnx",
+      "megabytes": 6.42,
+      "sha256": "0edeb8f9a8103405239d7edbf48aa372158eb3e0cbbe696ec7dbaf768a75c39d",
+      "measured": {
+        "synthetic_testsplit": {
+          "lines": 22187,
+          "ser_mean": 0.00539,
+          "exact_percent": 88.1
+        },
+        "reserve28_musescore": {
+          "lines": 2108,
+          "ser_mean": 0.03058,
+          "exact_percent": 63.5
+        },
+        "reserve28_verovio": {
+          "lines": 1968,
+          "ser_mean": 0.01834,
+          "exact_percent": 67.8
+        }
+      }
+    },
+    "int8": {
+      "file": "omr-line.int8.onnx",
+      "megabytes": 3.25,
+      "sha256": "61787b3c7f533df7e7295edcc505a90ea37d8ca787e470ecdb9945f94af84486",
+      "measured": {
+        "synthetic_testsplit": {
+          "lines": 22187,
+          "ser_mean": 0.00538,
+          "exact_percent": 88.2
+        },
+        "reserve28_musescore": {
+          "lines": 2108,
+          "ser_mean": 0.03041,
+          "exact_percent": 63.3
+        },
+        "reserve28_verovio": {
+          "lines": 1968,
+          "ser_mean": 0.01835,
+          "exact_percent": 67.9
+        }
+      }
+    }
+  },
+  "test_set": {
+    "lines": 22187,
+    "ser_by_corpus": {
+      "pdmx": 0.00396,
+      "bach": 0.06618
+    },
+    "lines_by_corpus": {
+      "pdmx": 21679,
+      "bach": 508
+    },
+    "ser_full": 0.00539
+  },
+  "note_fp16": "graph optimizations must be disabled: the default level crashes onnxruntime 1.28.0 natively when fusing the fp16 LSTM at session creation"
+}

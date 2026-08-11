@@ -1,0 +1,17 @@
+# running the models: this is all you need
+numpy
+onnxruntime==1.28.0
+pillow            # only for examples/run_line.py, to read a png
+
+# reproducing the training and the export
+# torch==2.13.0            # cpu build for export, cu130 build for training
+# onnx==1.22.0
+# safetensors==0.8.0
+# verovio==6.2.1           # renders the training material
+# resvg-py==0.3.3          # svg to png. not cairosvg: that needs a system cairo dll on windows
+# music21==10.5.0          # kern to musicxml for the second renderer
+
+# the pinned versions are the ones every number in this repo was measured with.
+# onnxruntime matters: the fp16 variant crashes at session creation under 1.28.0
+# if graph optimizations are left at the default level, so the exporter disables
+# them. if you move the version, re-measure rather than assume.
