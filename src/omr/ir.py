@@ -20,7 +20,16 @@ from fractions import Fraction
 # `line-truncated` moved here from the site repo's worker. The fields are
 # additive, but the MEANING of scan-suspected moved -- that is what a version
 # bump is for (schema freeze §1).
-IR_VERSION = "1.2"
+#
+# 1.3: purely additive, no meaning moves (entscheid-v13-zuschnitt-2026-08-04).
+# `staff-count-mismatch` carries `found`/`expected`, `unparseable-tokens`
+# carries `tokens`, and `modal-staves-disagreement` is a new code. Behind all
+# three stands one rule:
+#
+#   No datum lives in `message` alone. Every number and every payload in a
+#   warning text also exists as a field; `message` is display text and
+#   fallback, not a data carrier.
+IR_VERSION = "1.3"
 WIDTH_REDUCTION = 4          # CTC frame -> normalised pixel, model constant
 DIV_WHOLE = 192              # divisions of a whole note (48 per quarter)
 
@@ -273,10 +282,33 @@ def assemble_ir(lines, pages, generator="ir.py reference", rejection=None):
     modal = _modal(list(counts.values())) if counts else 0
 
     warnings = []
+    # v1.3: the staves-per-system number exists TWICE, from two different
+    # computations -- `reject.decide()` counts what `detect()` returned
+    # (reject.py:111), this function counts `staffIndex + 1` per (page,
+    # system). They agree today and the parity harnesses pin that, but nothing
+    # enforces it. If they ever drift, a closed score is rejected on a number
+    # the IR structure contradicts, and that is a silent error again. Where two
+    # computations must yield the same value, a guard belongs
+    # (entscheid-v13-zuschnitt-2026-08-04.md §4). Score-global, hence no
+    # `page`/`system` -- like the rejection warnings it sits next to.
+    if rejection is not None:
+        detected = rejection.get("detail", {}).get("modalStaves")
+        if detected is not None and detected != modal:
+            warnings.append({"code": "modal-staves-disagreement",
+                             "fromDetection": detected, "fromLines": modal,
+                             "message": f"Zeilenzahl je Akkolade widerspricht "
+                                        f"sich: die Systemerkennung sagt "
+                                        f"{detected}, die gelesenen Zeilen "
+                                        f"sagen {modal}"})
     for (page, sysno), n in sorted(counts.items()):
         if n != modal:
+            # v1.3: `found`/`expected` additively. Both numbers lived in the
+            # German prose alone, and the discarded lines never reach `parts`,
+            # so the site repo -- which renders its own text from `code` plus
+            # fields since v1.2 -- had no way to get at them.
             warnings.append({"code": "staff-count-mismatch",
                              "page": page, "system": sysno,
+                             "found": n, "expected": modal,
                              "message": f"Seite {page}, System {sysno}: "
                                         f"{n} Zeilen erkannt, "
                                         f"Struktur sagt {modal}"})
@@ -311,13 +343,16 @@ def assemble_ir(lines, pages, generator="ir.py reference", rejection=None):
                 # and would keep splitting happily on a prose sentence, just
                 # into the wrong words -- a silent break, not an exception.
                 # Formatting here is therefore load-bearing for a parser over
-                # there. v1.3 removes the coupling by shipping `tokens`
-                # additively, and `message` stays unchanged even then, because
-                # it is their fallback for older imported score JSONs.
+                # there. v1.3 ships `tokens` additively so the coupling can be
+                # dropped over there; `message` stays byte-identical anyway,
+                # because it is their fallback for older imported score JSONs.
+                # It stays load-bearing until they have switched -- the comment
+                # goes when they say the fallback is gone, not before.
                 # See entscheid-v13-zuschnitt-2026-08-04.md §2.
                 warnings.append({"code": "unparseable-tokens",
                                  "page": st["page"], "system": st["system"],
                                  "staff": p,
+                                 "tokens": list(el["tokens"]),
                                  "message": " ".join(el["tokens"])})
                 continue
             if el["kind"] == "attribute":

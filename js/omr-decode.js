@@ -23,8 +23,18 @@
 /* 1.2: `rejected` gets a real producer (omr-reject.js), `scan-suspected`
  * changed from a rejection reason to a warning, warnings carry `page`, and
  * `line-truncated` moved here from the site repo's worker. Additive fields,
- * but the MEANING of scan-suspected moved -- hence the bump. */
-export const IR_VERSION = "1.2";
+ * but the MEANING of scan-suspected moved -- hence the bump.
+ *
+ * 1.3: purely additive, nothing changes meaning. `staff-count-mismatch` gains
+ * `found`/`expected`, `unparseable-tokens` gains `tokens`, and
+ * `modal-staves-disagreement` is a new code. One rule behind all three:
+ *
+ *   No datum lives in `message` alone. Every number and every payload in a
+ *   warning text also exists as a field; `message` is display text and
+ *   fallback, not a data carrier.
+ *
+ * Nothing existing was touched, so a v1.2 reader keeps working. */
+export const IR_VERSION = "1.3";
 export const WIDTH_REDUCTION = 4;
 export const DIV_WHOLE = 192;
 
@@ -298,6 +308,23 @@ export function assembleIR(lines, pages, generator = "omr-decode.js",
   const m = counts.size ? modal([...counts.values()]) : 0;
 
   const warnings = [];
+  /* v1.3: the staves-per-system number exists TWICE, from two different
+   * computations -- omr-reject.js::decide() counts what detect() returned,
+   * this function counts staffIndex + 1 per (page, system). They agree today
+   * and the parity harnesses pin that, but nothing enforces it. If they ever
+   * drift, a closed score is rejected on a number the IR structure
+   * contradicts, and that is a silent error again. Score-global, hence no
+   * page/system -- like the rejection warnings it sits next to. */
+  if (rejection !== null) {
+    const detected = rejection.detail?.modalStaves;
+    if (detected !== undefined && detected !== null && detected !== m) {
+      warnings.push({ code: "modal-staves-disagreement",
+                      fromDetection: detected, fromLines: m,
+                      message: `Zeilenzahl je Akkolade widerspricht sich: `
+                        + `die Systemerkennung sagt ${detected}, die `
+                        + `gelesenen Zeilen sagen ${m}` });
+    }
+  }
   const keys = [...counts.keys()].sort((a, b) => {
     const [pa, sa] = a.split("/").map(Number);
     const [pb, sb] = b.split("/").map(Number);
@@ -307,7 +334,11 @@ export function assembleIR(lines, pages, generator = "omr-decode.js",
     const [page, sysno] = key.split("/").map(Number);
     const n = counts.get(key);
     if (n !== m) {
+      /* v1.3: `found`/`expected` additively. Both numbers lived in the German
+       * prose alone, and the discarded lines never reach `parts` -- so with
+       * your own rendering from `code` plus fields they were unreachable. */
       warnings.push({ code: "staff-count-mismatch", page, system: sysno,
+                      found: n, expected: m,
                       message: `Seite ${page}, System ${sysno}: ` +
                                `${n} Zeilen erkannt, Struktur sagt ${m}` });
     }
@@ -344,15 +375,18 @@ export function assembleIR(lines, pages, generator = "omr-decode.js",
     if (p >= m) continue;
     for (const el of ln.elements) {
       if (el.kind === "unparseable") {
-        // RAW on purpose: tokens joined by single spaces, no prose frame,
-        // unlike every other warning here. Your insert suggestion parses this
-        // with message.split(" "); a prose sentence would still split, just
-        // into the wrong words. Silent break, no exception. v1.3 ships
-        // `tokens` additively and `message` stays exactly as it is, because
-        // it is the fallback for older imported score JSONs.
-        // See entscheid-v13-zuschnitt-2026-08-04.md §2.
+        /* The message stays RAW: tokens joined by single spaces, no prose
+         * frame, unlike every other warning here. Your insert suggestion
+         * parses it with message.split(" "); a prose sentence would still
+         * split, just into the wrong words -- a silent break, no exception.
+         * v1.3 ships `tokens` next to it so the coupling can go; `message`
+         * stays exactly as it is either way, because it is your fallback for
+         * older imported score JSONs. The formatting stays load-bearing until
+         * you have switched over.
+         * See entscheid-v13-zuschnitt-2026-08-04.md §2. */
         warnings.push({ code: "unparseable-tokens", page: st.page,
                         system: st.system, staff: p,
+                        tokens: [...el.tokens],
                         message: el.tokens.join(" ") });
         continue;
       }
